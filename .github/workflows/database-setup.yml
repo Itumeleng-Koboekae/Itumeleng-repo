@@ -1,10 +1,9 @@
-name: Automate Database Creation
+name: Automate Database Creation and Exposure
 
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
+  workflow_dispatch:  # Allows manual triggering
 
 jobs:
   setup-database:
@@ -19,16 +18,20 @@ jobs:
           MSSQL_PID: Express
         ports:
           - 1433:1433
-        options: --health-cmd "opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P YourStrong@Passw0rd -Q 'SELECT 1'" --health-interval 10s --health-timeout 5s --health-retries 5
+        options: >-
+          --health-cmd "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P YourStrong@Passw0rd -Q 'SELECT 1'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v3
 
       - name: Install SQL Server Tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y curl apt-transport-https
+          sudo apt-get install -y curl gnupg
           curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
           curl https://packages.microsoft.com/config/ubuntu/20.04/prod.list | sudo tee /etc/apt/sources.list.d/msprod.list
           sudo apt-get update
@@ -36,44 +39,66 @@ jobs:
           echo 'export PATH="$PATH:/opt/mssql-tools/bin"' >> ~/.bashrc
           source ~/.bashrc
 
-      - name: Setup ngrok
-        env:
-          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+      - name: Install ngrok
         run: |
           curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
           echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
-          sudo apt update && sudo apt install ngrok
-          ngrok authtoken $NGROK_AUTH_TOKEN
-          ngrok tcp 1433 &
+          sudo apt-get update
+          sudo apt-get install -y ngrok
 
-      - name: Wait for SQL Server and ngrok
+      - name: Configure ngrok
+        env:
+          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
         run: |
-          sleep 20 # Wait for SQL Server and ngrok to start
-          NGROK_URL=$(curl -s http://localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url')
-          echo "Ngrok URL: $NGROK_URL"
+          ngrok authtoken $NGROK_AUTH_TOKEN
+          ngrok tcp 1433 --log=stdout > ngrok.log &  # Expose SQL Server port 1433
+          sleep 10  # Wait for ngrok to start
+          NGROK_URL=$(curl --silent http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[0].public_url')
+          echo "SQL Server exposed at: $NGROK_URL"
           echo "NGROK_URL=$NGROK_URL" >> $GITHUB_ENV
 
       - name: Create Database and Table
         run: |
-          /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P YourStrong@Passw0rd -Q "CREATE DATABASE AutoTest;"
-          /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P YourStrong@Passw0rd -d AutoTest -Q "CREATE TABLE [user] (Name VARCHAR(50), Surname VARCHAR(50), Email VARCHAR(100));"
+          /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P YourStrong@Passw0rd -Q "CREATE DATABASE [AutoTest]"
+          /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P YourStrong@Passw0rd -d AutoTest -Q "
+            CREATE TABLE [user] (
+              Name VARCHAR(50),
+              Surname VARCHAR(50),
+              Email VARCHAR(100)
+            )"
 
-      - name: Create Stored Procedure and User
+      - name: Create Stored Procedure
         run: |
           /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P YourStrong@Passw0rd -d AutoTest -Q "
-            CREATE PROCEDURE CreateAutoUser
+            CREATE PROCEDURE InsertUser
+              @Name VARCHAR(50),
+              @Surname VARCHAR(50),
+              @Email VARCHAR(100)
             AS
             BEGIN
-              CREATE LOGIN Auto_user WITH PASSWORD = 'AutoUser@Passw0rd';
-              CREATE USER Auto_user FOR LOGIN Auto_user;
-              ALTER ROLE db_owner ADD MEMBER Auto_user;
-            END;
-            EXEC CreateAutoUser;"
-          
-      - name: Insert Sample Data
+              INSERT INTO [user] (Name, Surname, Email)
+              VALUES (@Name, @Surname, @Email)
+            END"
+
+      - name: Create User with Full Access
         run: |
-          /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P YourStrong@Passw0rd -d AutoTest -Q "INSERT INTO [user] (Name, Surname, Email) VALUES ('John', 'Doe', 'john.doe@example.com');"
+          /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P YourStrong@Passw0rd -Q "
+            CREATE LOGIN Auto_user WITH PASSWORD = 'Auto@Passw0rd123';
+            ALTER SERVER ROLE sysadmin ADD MEMBER Auto_user;"
+          /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P YourStrong@Passw0rd -d AutoTest -Q "
+            CREATE USER Auto_user FOR LOGIN Auto_user;
+            ALTER ROLE db_owner ADD MEMBER Auto_user;"
+
+      - name: Insert Data Using Stored Procedure
+        run: |
+          /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P YourStrong@Passw0rd -d AutoTest -Q "
+            EXEC InsertUser 'John', 'Doe', 'john.doe@example.com';
+            EXEC InsertUser 'Jane', 'Smith', 'jane.smith@example.com';"
 
       - name: Verify Data
         run: |
-          /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P YourStrong@Passw0rd -d AutoTest -Q "SELECT * FROM [user];"
+          /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P YourStrong@Passw0rd -d AutoTest -Q "SELECT * FROM [user]"
+
+      - name: Display ngrok URL
+        run: |
+          echo "SQL Server is accessible at: ${{ env.NGROK_URL }}"
