@@ -7,25 +7,46 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3  # Updated to v3
+
+      - name: Install Chocolatey (if needed)
+        shell: powershell
+        run: |
+          Set-ExecutionPolicy Bypass -Scope Process -Force
+          [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+          iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
 
       - name: Install SQLCMD
+        shell: powershell
+        run: choco install sqlserver-cmdlineutils -y --no-progress
+
+      - name: Verify SQLCMD installation
+        shell: cmd
+        run: sqlcmd -?
+
+      - name: Debug print variables
+        shell: cmd
         run: |
-          choco install sqlserver-cmdlineutils -y
-          
-      - name: Verify secrets exist (safe check)
-        shell: pwsh
+          echo "SQL_SERVER: %SQL_SERVER%"
+          echo "SQL_USER: %SQL_USER%"
+          echo "SQL_PASSWORD: ***"  # Masked for security
+
+      - name: Test SQL Server connection
+        shell: cmd
+        env:
+          SQL_SERVER: ${{ secrets.SQL_SERVER }}
+          SQL_USER: ${{ secrets.SQL_USER }}
+          SQL_PASSWORD: ${{ secrets.SQL_PASSWORD }}
         run: |
-          if (-not "${{ secrets.SQL_SERVER }}") { Write-Error "SQL_SERVER secret is empty" }
-          if (-not "${{ secrets.SQL_USER }}") { Write-Error "SQL_USER secret is empty" }
-          Write-Output "Secrets appear to be set (values hidden for security)"
-          
+          sqlcmd -S "%SQL_SERVER%" -U "%SQL_USER%" -P "%SQL_PASSWORD%" -Q "SELECT 1 AS connection_test;" -b -o test_output.log
+          type test_output.log
+
       - name: Run SQL Script
-        shell: pwsh
+        shell: cmd
+        env:
+          SQL_SERVER: ${{ secrets.SQL_SERVER }}
+          SQL_USER: ${{ secrets.SQL_USER }}
+          SQL_PASSWORD: ${{ secrets.SQL_PASSWORD }}
         run: |
-          $server = "${{ secrets.SQL_SERVER }}"
-          $user = "${{ secrets.SQL_USER }}"
-          $pass = "${{ secrets.SQL_PASSWORD }}"
-          
-          Write-Output "Attempting connection to server (name hidden for security)..."
-          sqlcmd -S $server -U $user -P $pass -i setup.sql
+          sqlcmd -S "%SQL_SERVER%" -U "%SQL_USER%" -P "%SQL_PASSWORD%" -i setup.sql -b -o sql_output.log
+          type sql_output.log
