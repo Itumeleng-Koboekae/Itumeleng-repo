@@ -14,8 +14,8 @@ jobs:
           choco install sqlserver-cmdlineutils -y
       - name: Debug print variables
         run: |
-          echo "SQL_SERVER is $SQL_SERVER"
-          sqlcmd -S $SQL_SERVER -U $SQL_USER -P $SQL_PASSWORD -i setup.sql
+          Write-Output "SQL_SERVER: $env:SQL_SERVER"
+          Write-Output "SQL_USER: $env:SQL_USER"
 
       - name: Run SQL Script
         env:
