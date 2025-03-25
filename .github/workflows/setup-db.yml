@@ -14,10 +14,8 @@ jobs:
           choco install sqlserver-cmdlineutils -y
       - name: Debug print variables
         run: |
-          echo "SQL_SERVER: ${{ secrets.SQL_SERVER }}"
-          echo "SQL_USER: ${{ secrets.SQL_USER }}"
-          # Mask password for security
-          echo "SQL_PASSWORD: ***"
+          echo "SQL_SERVER is $SQL_SERVER"
+          sqlcmd -S $SQL_SERVER -U $SQL_USER -P $SQL_PASSWORD -i setup.sql
 
       - name: Run SQL Script
         env:
