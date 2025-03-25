@@ -1,28 +1,28 @@
--- Create the database
-CREATE DATABASE `AutoTest.db`;
-
--- Use the database
-USE `AutoTest.db`;
-
--- Create the user table
-CREATE TABLE user (
-    Name VARCHAR(50),
-    Surname VARCHAR(50),
-    Email VARCHAR(100)
-);
-
--- Create a stored procedure to insert data
-DELIMITER //
-CREATE PROCEDURE insert_user(IN name VARCHAR(50), IN surname VARCHAR(50), IN email VARCHAR(100))
+CREATE PROCEDURE dbo.SetupAutoDB
+AS
 BEGIN
-    INSERT INTO user (Name, Surname, Email) VALUES (name, surname, email);
-END //
-DELIMITER ;
+    -- Create Database if it doesn’t exist
+    IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = 'AutoDB')
+    BEGIN
+        CREATE DATABASE AutoDB;
+    END
 
--- Create the Auto_user with full access
-CREATE USER 'Auto_user'@'%' IDENTIFIED BY '@@AUTO_USER_PASSWORD@@';
-GRANT ALL PRIVILEGES ON *.* TO 'Auto_user'@'%' WITH GRANT OPTION;
+    -- Switch to the new database
+    USE AutoDB;
 
--- Insert sample data using the stored procedure
-CALL insert_user('John', 'Doe', 'john@example.com');
-CALL insert_user('Jane', 'Smith', 'jane@example.com');
+    -- Create Table if it doesn’t exist
+    IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'Users')
+    BEGIN
+        CREATE TABLE Users (
+            Id INT PRIMARY KEY IDENTITY(1,1),
+            Name NVARCHAR(100),
+            Email NVARCHAR(100)
+        );
+    END
+
+    -- Insert Sample Data
+    INSERT INTO Users (Name, Email)
+    VALUES ('John Doe', 'john@example.com'),
+           ('Jane Smith', 'jane@example.com');
+END
+GO
