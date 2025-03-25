@@ -12,15 +12,12 @@ jobs:
       - name: Install SQLCMD
         run: |
           choco install sqlserver-cmdlineutils -y
-      - name: Debug print variables
+          
+      - name: Verify secrets are accessible
         run: |
-          Write-Output "SQL_SERVER: $env:SQL_SERVER"
-          Write-Output "SQL_USER: $env:SQL_USER"
-
+          Write-Output "SQL_SERVER secret exists: $(${{ secrets.SQL_SERVER }} -ne '')"
+          Write-Output "SQL_USER secret exists: $(${{ secrets.SQL_USER }} -ne '')"
+          
       - name: Run SQL Script
-        env:
-          SQL_SERVER: ${{ secrets.SQL_SERVER }}
-          SQL_USER: ${{ secrets.SQL_USER }}
-          SQL_PASSWORD: ${{ secrets.SQL_PASSWORD }}
         run: |
-          sqlcmd -S $SQL_SERVER -U $SQL_USER -P $SQL_PASSWORD -i setup.sql
+          sqlcmd -S "${{ secrets.SQL_SERVER }}" -U "${{ secrets.SQL_USER }}" -P "${{ secrets.SQL_PASSWORD }}" -i setup.sql
