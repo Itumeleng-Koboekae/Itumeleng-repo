@@ -13,11 +13,19 @@ jobs:
         run: |
           choco install sqlserver-cmdlineutils -y
           
-      - name: Verify secrets are accessible
+      - name: Verify secrets exist (safe check)
+        shell: pwsh
         run: |
-          Write-Output "SQL_SERVER secret exists: $(${{ secrets.SQL_SERVER }} -ne '')"
-          Write-Output "SQL_USER secret exists: $(${{ secrets.SQL_USER }} -ne '')"
+          if (-not "${{ secrets.SQL_SERVER }}") { Write-Error "SQL_SERVER secret is empty" }
+          if (-not "${{ secrets.SQL_USER }}") { Write-Error "SQL_USER secret is empty" }
+          Write-Output "Secrets appear to be set (values hidden for security)"
           
       - name: Run SQL Script
+        shell: pwsh
         run: |
-          sqlcmd -S "${{ secrets.SQL_SERVER }}" -U "${{ secrets.SQL_USER }}" -P "${{ secrets.SQL_PASSWORD }}" -i setup.sql
+          $server = "${{ secrets.SQL_SERVER }}"
+          $user = "${{ secrets.SQL_USER }}"
+          $pass = "${{ secrets.SQL_PASSWORD }}"
+          
+          Write-Output "Attempting connection to server (name hidden for security)..."
+          sqlcmd -S $server -U $user -P $pass -i setup.sql
