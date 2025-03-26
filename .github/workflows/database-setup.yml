@@ -1,52 +1,58 @@
-name: Automate Database Setup
+name: Setup SQL Server Database
 
 on: [push]
 
 jobs:
-  build:
+  setup-db:
     runs-on: ubuntu-latest
-
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: ${{ secrets.MYSQL_ROOT_PASSWORD }}
-        ports:
-          - 3306:3306
-        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v2
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-      - name: Install MySQL client and jq
-        run: sudo apt-get update && sudo apt-get install -y mysql-client jq
+      - name: Install prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl apt-transport-https software-properties-common
 
-      - name: Replace password placeholder in SQL script
-        run: sed -i "s/@@AUTO_USER_PASSWORD@@/${{ secrets.AUTO_USER_PASSWORD }}/g" init.sql
+      - name: Import Microsoft GPG key
+        run: curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
 
-      - name: Run SQL script
+      - name: Add Microsoft SQL Server repository
+        run: sudo add-apt-repository "$(wget -qO- https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list)"
+
+      - name: Update apt
+        run: sudo apt-get update
+
+      - name: Install mssql-tools
+        run: sudo apt-get install -y mssql-tools unixodbc-dev
+
+      - name: Verify SQLCMD installation
+        run: sqlcmd -?
+
+      - name: Debug print variables
+        run: |
+          echo "SQL_SERVER: $SQL_SERVER"
+          echo "SQL_USER: $SQL_USER"
+          echo "SQL_PASSWORD: ***"  # Masked for security
         env:
-          MYSQL_PWD: ${{ secrets.MYSQL_ROOT_PASSWORD }}
-        run: mysql -h 127.0.0.1 -u root < init.sql
+          SQL_SERVER: ${{ secrets.SQL_SERVER }}
+          SQL_USER: ${{ secrets.SQL_USER }}
+          SQL_PASSWORD: ${{ secrets.SQL_PASSWORD }}
 
-      - name: Install ngrok
+      - name: Test SQL Server connection
         run: |
-          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
-          echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
-          sudo apt update && sudo apt install ngrok
+          sqlcmd -S "$SQL_SERVER" -U "$SQL_USER" -P "$SQL_PASSWORD" -Q "SELECT 1 AS connection_test;" -b -o test_output.log
+          cat test_output.log
+        env:
+          SQL_SERVER: ${{ secrets.SQL_SERVER }}
+          SQL_USER: ${{ secrets.SQL_USER }}
+          SQL_PASSWORD: ${{ secrets.SQL_PASSWORD }}
 
-      - name: Configure ngrok
-        run: ngrok authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
-
-      - name: Expose MySQL via ngrok
-        run: ngrok tcp 3306 --log=stdout > ngrok.log &
-
-      - name: Get ngrok URL
+      - name: Run SQL Script
         run: |
-          sleep 10
-          NGROK_URL=$(curl -s http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[0].public_url')
-          echo "Ngrok URL: $NGROK_URL"
-
-      - name: Keep tunnel open (optional)
-        run: sleep 300
+          sqlcmd -S "$SQL_SERVER" -U "$SQL_USER" -P "$SQL_PASSWORD" -i setup.sql -b -o sql_output.log
+          cat sql_output.log
+        env:
+          SQL_SERVER: ${{ secrets.SQL_SERVER }}
+          SQL_USER: ${{ secrets.SQL_USER }}
+          SQL_PASSWORD: ${{ secrets.SQL_PASSWORD }}
