@@ -1,20 +1,20 @@
 -- Create Database if it doesn't exist
 IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = 'AutoDB')
 BEGIN
-    CREATE DATABASE Auto_DB;
+    CREATE DATABASE AutoDB;
 END
 GO
 
--- Switch to Auto_DB
-USE Auto_DB;
+-- Switch to AutoDB
+USE AutoDB;
 GO
 
 -- Create or update Stored Procedure
-IF OBJECT_ID('dbo.SetupAuto_DB', 'P') IS NOT NULL
-    DROP PROCEDURE dbo.SetupAuto_DB;
+IF OBJECT_ID('dbo.SetupAutoDB', 'P') IS NOT NULL
+    DROP PROCEDURE dbo.SetupAutoDB;
 GO
 
-CREATE PROCEDURE dbo.SetupAuto_DB
+CREATE PROCEDURE dbo.SetupAutoDB
 AS
 BEGIN
     -- Create Table if it doesn't exist
@@ -41,5 +41,5 @@ END
 GO
 
 -- Execute the Stored Procedure
-EXEC dbo.SetupAuto_DB;
+EXEC dbo.SetupAutoDB;
 GO
