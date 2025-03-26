@@ -12,11 +12,22 @@ jobs:
       - name: Install prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -y curl apt-transport-https software-properties-common gnupg
+          sudo apt-get install -y curl apt-transport-https software-properties-common gnupg ca-certificates
 
-      - name: Import Microsoft GPG key (non-interactive)
+      - name: Download Microsoft GPG key
         run: |
-          curl -sSL https://packages.microsoft.com/keys/microsoft.asc | sudo gpg --batch --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
+          sudo mkdir -p /usr/share/keyrings/
+          curl -sSL https://packages.microsoft.com/keys/microsoft.asc -o microsoft.asc
+          cat microsoft.asc | sudo gpg --batch --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
+          rm microsoft.asc
+
+      - name: Verify GPG key
+        run: |
+          if [ ! -f /usr/share/keyrings/microsoft-prod.gpg ]; then
+            echo "GPG key file not found!"
+            exit 1
+          fi
+          echo "GPG key successfully installed"
 
       - name: Add Microsoft SQL Server repository
         run: |
